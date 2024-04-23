@@ -5,7 +5,7 @@ def add_task(task):
     try:
         db.session.add(task)
         db.session.commit()
-        return jsonify({"message": "Task added successfully"})
+        return jsonify({'message': 'Task created', 'task_id': task.id})
     except Exception as e:
         db.session.rollback()
         return jsonify({"message": "Error adding task", "error": str(e)})
