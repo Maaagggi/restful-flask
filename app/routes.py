@@ -1,10 +1,21 @@
 from flask import jsonify, request, url_for, redirect
 from app import app 
 from flask_jwt_extended import get_jwt_identity, create_access_token
+from flask_jwt_extended import verify_jwt_in_request_optional, jwt_required
+
 from app.user_services import *
 from app.models import Task, Users
 from passlib.hash import pbkdf2_sha256
 
+
+class MissingCredentialsError(Exception):
+    pass
+
+class UsernameExistsError(Exception):
+    pass
+
+class InvalidUsernameOrPassword(Exception):
+    pass
 
 @app.route('/', methods=['GET'])
 def landing():
@@ -12,20 +23,36 @@ def landing():
 
 
 @app.route('/new_task', methods=['POST'])
+@jwt_required()
 def create_task():
     data = request.json
     title = data.get('title')
     description = data.get('description')
     user_id = get_jwt_identity()
-    task = Task(title=title, description=description, user_id = user_id)
-    create = add_task(task.db)
-    return create 
+
+    # Create Task Object (associate with user)
+    task = Task(title=title, description=description, user_id=user_id) 
+
+    # Call add_task to save to the database
+    return add_task(task)
+ 
 
 @app.route("/view", methods=['GET'])
 def read_task():
-    tasks = Task.query.filter_by(user_id=user_id)
-    get = get_task(tasks.db)
-    return get
+    verify_jwt_in_request_optional()  # Attempt to verify JWT (if present)
+    user_id = get_jwt_identity()  # Will be None if no valid token
+
+    if user_id:
+        tasks = Task.query.filter_by(user_id=user_id).all()
+        # Use your existing get_task function (if preferred)
+        return get_task(tasks)
+
+    else:
+        # Handle non-logged in scenario
+        result = (jsonify({'error': 'Login required'}), 401 )
+        print(result)
+        return redirect(url_for('login'))
+
 
 @app.route('/register', methods=['POST'])
 def register():
@@ -33,18 +60,14 @@ def register():
     username = data.get('username')
     password = data.get('password')
     
-    print(data)    
-    
     password_hash = pbkdf2_sha256.hash(password) 
-
-    print(password_hash)
 
     # Validation
     if not username or not password: 
-        return jsonify({'error': 'Missing credentials'}) 
+        raise MissingCredentialsError('Missing credentials') 
 
     if Users.query.filter_by(username=username).first():
-        return jsonify({'error': 'Username exists'})
+        raise UsernameExistsError('Username exists')
 
     # Create user and save to database
     new_user = Users(username=username, password=password_hash)
@@ -64,12 +87,8 @@ def login():
     user = Users.query.filter_by(username=username).first()  # Fetch the user  
     
     if not user or not pbkdf2_sha256.verify(password, user.password):  # Check if user exists and password matches
-        return jsonify({'error': 'Invalid username or password'}), 401
+        raise InvalidUsernameOrPassword('Invalid Username or Password')
 
     # Login successful - Generate JWT and optionally include user_id
     access_token = create_access_token(identity=user.id)
-    response = jsonify({
-        'message': 'Login successful', 
-        'access_token': access_token
-    })  
-    return response
+    return jsonify (access_token=access_token)

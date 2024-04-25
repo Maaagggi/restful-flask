@@ -1,9 +1,6 @@
 from flask import jsonify
 from app import db
-# from models import Users
 from .models import Users
-
-
 
 def add_task(task):
     try:

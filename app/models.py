@@ -1,7 +1,6 @@
 from flask import jsonify, request, redirect, url_for
 from flask_sqlalchemy import SQLAlchemy
 from passlib.hash import scrypt 
-#from dotenv import load_dotenv
 
 from app import db 
 
