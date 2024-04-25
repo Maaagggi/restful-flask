@@ -1,9 +1,9 @@
-from flask import jsonify, request, redirect, url_for, render_template
-from app import db, app 
-from flask_jwt_extended import create_access_token, jwt_required
+from flask import jsonify, request, url_for, redirect
+from app import app 
+from flask_jwt_extended import get_jwt_identity, create_access_token
 from app.user_services import *
 from app.models import Task, Users
-from passlib.hash import scrypt
+from passlib.hash import pbkdf2_sha256
 
 
 @app.route('/', methods=['GET'])
@@ -11,69 +11,65 @@ def landing():
     return jsonify({"message": "Welcome to the Page"})
 
 
-@app.route('/tasks', methods=['POST'])
+@app.route('/new_task', methods=['POST'])
 def create_task():
     data = request.json
     title = data.get('title')
     description = data.get('description')
-
-    task = Task(title=title, description=description)
+    user_id = get_jwt_identity()
+    task = Task(title=title, description=description, user_id = user_id)
     create = add_task(task.db)
     return create 
 
-@app.route("/read", methods=['GET'])
+@app.route("/view", methods=['GET'])
 def read_task():
-    tasks = Task.query.all()
+    tasks = Task.query.filter_by(user_id=user_id)
     get = get_task(tasks.db)
     return get
 
-@app.route('/register', methods=['GET', 'POST'])
+@app.route('/register', methods=['POST'])
 def register():
-    if request.method == 'GET':
-        return render_template('register.html')  # Display the registration form
-
-    elif request.method == 'POST':
-        username = request.form['username']
-        password = request.form['password']
-
-        if not username or not password: 
-            return jsonify({'error': 'Missing credentials'}), 400 
-        if Users.query.filter_by(username=username).first():
-            return jsonify({'error': 'Username exists'}), 409
-
-        # Password Hashing using Scrypt
-        password_hash = scrypt.hash(password)  
-        new_user = Users(username=username, password_hash=password_hash)
-        db.session.add(new_user)
-        db.session.commit()
-
-        return jsonify({'message': 'User registered!'})
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
     
-@app.route('/login', methods=['GET', 'POST'])
+    print(data)    
+    
+    password_hash = pbkdf2_sha256.hash(password) 
+
+    print(password_hash)
+
+    # Validation
+    if not username or not password: 
+        return jsonify({'error': 'Missing credentials'}) 
+
+    if Users.query.filter_by(username=username).first():
+        return jsonify({'error': 'Username exists'})
+
+    # Create user and save to database
+    new_user = Users(username=username, password=password_hash)
+    db.session.add(new_user)
+    db.session.commit()
+
+    return jsonify({'message': 'User registered!'})
+
+    
+    
+@app.route('/login', methods=['POST'])
 def login():
+    data = request.json
+    username = data.get('username')
+    password = data.get('password')
+
+    user = Users.query.filter_by(username=username).first()  # Fetch the user  
     
-    if request.method == "GET":
-        return render_template('login.html')
-    
-    if request.method == "POST":
-        data = request.form
-        username = data.get('username')
-        password = data.get('password')
+    if not user or not pbkdf2_sha256.verify(password, user.password):  # Check if user exists and password matches
+        return jsonify({'error': 'Invalid username or password'}), 401
 
-        if not username or not password:
-             return jsonify({'error': 'Missing username or password'})
-        
-        user = Users.query.filter_by(username=username).first()
-        
-        if not user:
-             return jsonify({'error': 'Invalid username or password'})
-        
-        if not scrypt.verify(password, user.password_hash): 
-            return jsonify({'error': 'Invalid username or password'})
-
-        access_token = create_access_token(identity=user.id)
-        response = jsonify({
-            'message': 'Login successful',
-            })  
-
+    # Login successful - Generate JWT and optionally include user_id
+    access_token = create_access_token(identity=user.id)
+    response = jsonify({
+        'message': 'Login successful', 
+        'access_token': access_token
+    })  
     return response

@@ -1,7 +1,9 @@
 from flask import Flask
+from sqlalchemy import *
 from flask_sqlalchemy import SQLAlchemy
 from dotenv import load_dotenv
 from flask_jwt_extended import JWTManager
+from sqlalchemy.dialects.mysql import pymysql 
 
 import os
 
