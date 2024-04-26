@@ -1,7 +1,7 @@
 from flask import jsonify, request, url_for, redirect
 from app import app 
 from flask_jwt_extended import get_jwt_identity, create_access_token
-from flask_jwt_extended import verify_jwt_in_request_optional, jwt_required
+from flask_jwt_extended import jwt_required
 
 from app.user_services import *
 from app.models import Task, Users
@@ -38,8 +38,8 @@ def create_task():
  
 
 @app.route("/view", methods=['GET'])
+@jwt_required(optional=True)  # Attempt to verify JWT (if present)
 def read_task():
-    verify_jwt_in_request_optional()  # Attempt to verify JWT (if present)
     user_id = get_jwt_identity()  # Will be None if no valid token
 
     if user_id:
@@ -50,7 +50,6 @@ def read_task():
     else:
         # Handle non-logged in scenario
         result = (jsonify({'error': 'Login required'}), 401 )
-        print(result)
         return redirect(url_for('login'))
 
 
@@ -86,6 +85,8 @@ def login():
 
     user = Users.query.filter_by(username=username).first()  # Fetch the user  
     
+    print(user.password)
+
     if not user or not pbkdf2_sha256.verify(password, user.password):  # Check if user exists and password matches
         raise InvalidUsernameOrPassword('Invalid Username or Password')
 
